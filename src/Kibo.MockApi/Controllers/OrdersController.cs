@@ -14,33 +14,61 @@ public class OrdersController : ControllerBase
     /// The order starts as "Pending" and transitions to "ReadyForFulfillment" after 5 seconds.
     /// </summary>
     [HttpPost]
-    public IActionResult CreateOrder([FromBody] Order order)
+    [HttpPost]
+public IActionResult CreateOrder([FromBody] Order order)
+{
+    // Tenant header required
+    if (!Request.Headers.TryGetValue("x-kibo-tenant", out var tenantHeader)
+        || string.IsNullOrWhiteSpace(tenantHeader))
     {
-        // ── Auth gate: tenant header is required ──
-        if (!Request.Headers.TryGetValue("x-kibo-tenant", out var tenantHeader)
-            || string.IsNullOrWhiteSpace(tenantHeader))
-        {
-            return Unauthorized(new { error = "Missing required header: x-kibo-tenant" });
-        }
-
-        order.Id = Guid.NewGuid();
-        order.TenantId = tenantHeader.ToString();
-        order.Status = "Pending";
-
-        OrderStore.Add(order);
-
-        // ── THE SDET TRAP ──
-        // Fire-and-forget: after exactly 5 seconds the status flips.
-        // Naive tests use Thread.Sleep(6000) to handle this — candidates
-        // should replace that with a polling/retry strategy.
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(5));
-            OrderStore.UpdateStatus(order.Id, "ReadyForFulfillment");
-        });
-
-        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
+        return Unauthorized(new { error = "Missing required header: x-kibo-tenant" });
     }
+
+    var tenant = tenantHeader.ToString();
+
+    // Validate tenant header
+    if (!System.Text.RegularExpressions.Regex.IsMatch(
+            tenant,
+            @"^tenant-[A-Za-z0-9-]+$"))
+    {
+        return BadRequest(new { error = "Invalid x-kibo-tenant header" });
+    }
+
+    // Validate customer email
+    if (string.IsNullOrWhiteSpace(order.CustomerEmail)
+        || order.CustomerEmail.Length > 254)
+    {
+        return BadRequest(new { error = "Invalid customer email" });
+    }
+
+    // Validate line items
+    if (order.LineItems == null || order.LineItems.Count == 0)
+    {
+        return BadRequest(new { error = "At least one line item is required" });
+    }
+
+    // Validate unit price
+    if (order.LineItems.Any(item => item.UnitPrice < 0))
+    {
+        return BadRequest(new { error = "Unit price cannot be negative" });
+    }
+
+    // Create order
+    order.Id = Guid.NewGuid();
+    order.TenantId = tenant;
+    order.Status = "Pending";
+    
+    OrderStore.Add(order);
+
+    // Change status after 5 seconds
+    _ = Task.Run(async () =>
+    {
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        OrderStore.UpdateStatus(order.Id, "ReadyForFulfillment");
+    });
+
+    return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
+}
 
     /// <summary>
     /// GET /v1/orders/{id}

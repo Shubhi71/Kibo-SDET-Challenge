@@ -36,13 +36,13 @@ namespace Kibo.TestingFramework
 
         public Order Build()
         {
-            return new Order
+             return new Order
             {
                 CustomerEmail = _customerEmail,
-                TenantId = _tenantId,
-                LineItems = _lineItems.Count > 0 ? _lineItems : new List<LineItem> { LineItemBuilder.Random().Build() }
-            };
-        }
+                 TenantId = _tenantId,
+                LineItems = _lineItems
+             };
+        }   
     }
 
     public class LineItemBuilder

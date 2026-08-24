@@ -18,4 +18,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kibo.TestingFramework\Kibo.TestingFramework.csproj" />
+  </ItemGroup>
+
 </Project>
